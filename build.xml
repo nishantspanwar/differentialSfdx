@@ -1,0 +1,77 @@
+<project name="Salesforce DX" default="diffBuilderWithGitCommit" basedir="." xmlns:sf="antlib:com.salesforce">
+<taskdef resource="net/sf/antcontrib/antlib.xml">
+    <classpath>
+        <pathelement location="lib/ant-contrib-1.0b3.jar"/>
+    </classpath>
+</taskdef>
+<macrodef name="gitDiff">
+    <sequential>
+        <exec executable="git" outputproperty="git.revision">
+            <arg value="log" />
+            <arg value="-2" />
+            <arg value="--pretty=format:%H" />
+        </exec>
+        <var name="index" value="1"/>
+        <for list="${git.revision}" param="letter" delimiter="${line.separator}">
+        <sequential>
+            <property name="var${index}" value="@{letter}" />
+            <math result="index" operand1="${index}" operation="+" operand2="1" datatype="int" />
+        </sequential>
+        </for>
+        <echo>Current GIT Commit : ${var1}</echo>
+        <echo>Previous Known Successful GIT Commit : ${var2}</echo>
+        <exec executable="git" outputproperty="git.diff">
+            <arg value="diff" />
+            <arg value="--pretty=format:" />
+            <arg value="--name-only" />
+            <arg value="${var1}" />
+            <arg value="${var2}" />
+        </exec>
+    </sequential>
+</macrodef>
+<target name="diffBuilderWithGitCommit">
+    <delete dir="deploy-sf"/>
+    <mkdir dir="deploy-sf"/>
+    <gitDiff/>
+    <echo>Change Log:</echo>
+    <echo>${git.diff}</echo>
+    <for list="${git.diff}" param="currentDiff" delimiter="${line.separator}">
+        <sequential>
+            <property name="DiffFile" value="@{currentDiff}" />
+            <if>
+                <and>
+                    <available file="@{currentDiff}"/>
+                    <matches string="@{currentDiff}" pattern="force-app/"/>
+                </and>
+                <then>
+                    <propertyregex
+                        property="currentDiffWithoutSRC"
+                        input="@{currentDiff}"
+                        regexp="force-app\/([a-zA-Z$]*\/[a-zA-Z0-9\/\.\_-]*)"
+                        select="\1"
+                        casesensitive="true" 
+                        override="true"
+                        defaultValue=""/>
+                    <echo>Current Component : ${currentDiffWithoutSRC}</echo>
+                    <copy todir="deploy-sf" verbose="false">
+                        <fileset dir="force-app">
+                            <include name="${currentDiffWithoutSRC}" />
+                        </fileset>
+                    </copy>
+                    <if>
+                        <available file="@{currentDiff}-meta.xml"/>
+                        <then>
+                            <echo>Generating meta-xml : @{currentDiff}</echo>
+                            <copy todir="deploy-sf" verbose="false">
+                                <fileset dir="force-app">
+                                    <include name="${currentDiffWithoutSRC}-meta.xml" />
+                                </fileset>
+                            </copy>
+                        </then>
+                    </if>
+                </then>
+            </if>
+        </sequential>
+    </for>
+</target>
+</project>
